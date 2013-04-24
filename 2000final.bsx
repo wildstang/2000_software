@@ -1,0 +1,1255 @@
+'orlando1.bsx 
+' do anchor: -popper button + debug trigger [this modifies the popper code.. same pwm]
+'
+'northwestern4pract.bsx - Created just prior to Northwestern U. for practice robot
+'  Moved pivot positions a little.
+'  LEDs now show actual position of pivot instead of target. 
+'  p2_sw_trig ONLY causes robot to drive in turbo mode
+'  p2_sw_top will override all software limits (pivot and extension) while pressed
+'k: do the eeprom configuration set for pivot angles so we don't have
+'   use the laptop to change the angles. 
+'
+'michigan15.bsx -- USED for ~3pm round at michigan.
+'same as 14 but we ignore analog switch inputs of '0' to
+'work around the bad serin readings.  disabled the delay
+'stuff...
+'todo - consider cutting speed when lift is extended. 
+'top limit - 1
+
+'?why doesn't it report a syntax problem if you have "debu"
+'by itself on a line, but it does report the 2nd time?
+
+DEBUG_ENABLE CON 0  'set to 1 to print debug stuff (slow)
+
+DRIVE_SCL CON 50  'turbo drive speed reduction (percent) [e.g. 50]
+DRIVE_CON CON 64  '128 * reduction percent [e.g. 64] 
+
+'michigan14.bsx -- used in 2nd match of michigan. 
+'todo:
+'freed up var p2_wheel, and removed from transmit stream. 
+'added delay first time around loop. 
+'
+'rename vars for hang & score pivot buttons 
+'change free to mode "0" because of bogus input voltage..
+'?add "wait for transmit" then delay to let analog tx values stabilize. 
+
+'--get a 98 Diff tool! hard to find accidental typos without it. 
+
+'michigan12.bsx -- verified Friday 3/10, morning of 1st round. 
+'same as 11, but... 
+'New mapping for auto-pivot buttons, no longer increment/decrement, but direct:
+' seek up -> hang
+' seek down -> score
+' accum -> accum
+' unusued accum -> limbo
+'
+'...check: we might be able to free up the "pivot_state" var now...
+'also prev_red_back bit...
+
+
+'michigan11.bsx
+'same as 10, but... 
+'-turn off seek mode when target hit [DONE] 
+'-add joy x deadzone [DONE]
+
+'To Do:
+'-pivot lower limit?
+'-use scratchpad
+'!! pwm_orange (little conveyer) is aliased to p1_x.. so just be
+'careful that we don't write to p1_x after conveyer input... I think
+'we're ok... when this p1/p2 stuff is solid, get rid of var p1_x and
+'just use a permanent name. 
+
+'michigan10.bsx
+'--> The RIGHT/DRIVE JOYSTICK is now on PORT 2 <--
+'same as 9, but switching l/r joysticks (drive/vs/pivot)
+'had to add var p2_x and add it to serin & stream
+'p2_x & y are drive, p2_sw_trig is turbo
+'p1_y is manual pivot
+
+'michigan9.bsx
+'added top pivot limit
+'added turbo speed reduction (both untested as of 10am) 
+
+'To Calibrate (debug prints): 
+'-top pot limit
+'-other pot positions
+'-pivot speed?
+'-slow down (last year value) / turbo.  divider on x axis. 
+'-verify button mappings (esp turbo = right joystick button & trigger = turbo)
+
+
+'todo
+'-set pivot top limit [done] 
+'-turbo [done]
+'-swap l/r joysticks
+
+
+'WildStang old-box with 2000 mappings
+'(use F11 and set to COM1 to see debug terminal)
+
+'Pivot joystick/manu has been reversed so pull back = pivot up
+'Pivot values have been adjusted for the practice robot
+'Auto Pivot speeds have been increased a lot...be careful
+'Auto Pivot has been disabled on the Joystick
+
+'it would be nice to
+'have the pots wired so a 'lower' value is always 'down'
+'so it matches the sense of the joysticks. 
+
+
+'Todo: 
+'activate debug switch constant
+'add joystick deadzone ("it never trims out")
+'create a separate region of code for platform specific constants
+'and mappings (box or robot)
+'
+'disable extender below low pivot value
+'remember previous pivot state when in override
+'improve LED display of pivot state
+'NEW button box, mappings & multiplexing, also analog "switch"
+'
+
+'-get COMPLETE inventory of # of vars needed, i.e. # of inputs & outputs. 
+'-find the new Debug terminal commands (position output etc.)
+
+'==Draft rest of controls: 
+'-pivot: 2way motor, pot to sense angle. "discrete mode" button (& LED feedback)
+'to step between several fixed angles, plus analog override for both drivers.
+'-knocker: 2way motor, 2press button: 1-go until "armed", 2-fire & rest. LED for "armed"
+'-magic carpet: single shot button (pivoting can reset). LED for "deployed"
+'-compressor: in & out (no sensor) 
+'-hood: open & close (no sensor?)
+'
+'
+'do the kmk items...
+
+
+'=============================================================================
+' PROGRAM:    2000 Default Code RevNC.bsx
+' Written by: Innovation First, Inc.
+' Date:       12/28/99
+'
+' Define BS2-SX Project Files
+'
+' {$STAMP BS2SX}
+
+'kmk add to last year's code {$STAMP_BS2}
+
+
+
+'========== DECLARE VARIABLES ================================================
+'=============================================================================
+'  Below is a list of declared input and output variables.  Comment or un-comment
+'  the variables as needed.  Declare any additional variables required in
+'  your main program loop.  Note that you may only use 26 total variables.
+
+
+'---------- Operator Interface (OI) - Analog Inputs --------------------------
+
+p1_x		VAR byte	'Port 1, X-axis on Joystick
+p2_x		VAR byte	'Port 2, X-axis on Joystick
+pwm6		VAR byte	'
+p3_x		VAR byte	'Port 3, X-axis on Joystick
+p4_x		VAR byte	'Port 4, X-axis on Joystick
+
+p1_y		VAR byte	'Port 1, Y-axis on Joystick
+p2_y		VAR byte	'Port 2, Y-axis on Joystick
+p3_y		VAR byte	'Port 3, Y-axis on Joystick
+p4_y		VAR byte	'Port 4, Y-axis on Joystick
+
+p1_wheel	VAR byte	'Port 1, Wheel on Joystick
+'p2_wheel	VAR byte	'Port 2, Wheel on Joystick
+p3_wheel	VAR byte	'Port 3, Wheel on Joystick
+'p4_wheel	VAR byte	'Port 4, Wheel on Joystick
+
+pwm2		VAR byte
+pwm3		VAR byte
+
+
+'p1_aux	VAR byte	'Port 1, Aux on Joystick
+'p2_aux	VAR byte	'Port 2, Aux on Joystick
+p3_aux	VAR byte	'Port 3, Aux on Joystick
+'p4_aux	VAR byte	'Port 4, Aux on Joystick
+
+
+'---------- Operator Interface - Digital Inputs ------------------------------
+
+oi_swA	VAR byte	'OI Digital Switch Inputs 1 thru 8
+oi_swB	VAR byte	'OI Digital Switch Inputs 9 thru 16
+
+
+'---------- Robot Controller (RC) - Analog Inputs ----------------------------
+
+sensor1	VAR byte	'RC Analog Input 1, connector pin 2
+'sensor2	VAR byte	'RC Analog Input 2, connector pin 16
+'sensor3	VAR byte	'RC Analog Input 3, connector pin 5
+'sensor4	VAR byte	'RC Analog Input 4, connector pin 19
+'sensor5	VAR byte	'RC Analog Input 5, connector pin 8
+sensor6	VAR byte	'RC Analog Input 6, connector pin 22
+'sensor7	VAR byte	'RC Analog Input 7, connector pin 11
+'bat_volt	VAR byte	'RC Analog Input 8, hardwired to the Battery
+				'Vin = ((4.7/14.7)* Battery voltage)-0.4
+				'Binary Battery Voltage = (Vin/5.0 V)*255
+
+
+'---------- Robot Controller - Digital Inputs --------------------------------
+
+rc_swA	VAR byte	'RC Digital Inputs 1 thru 8
+rc_swB	VAR byte	'RC Digital Inputs 9 thru 16
+
+
+'---------- Robot Controller - Digital Outputs -------------------------------
+
+relayA	VAR byte
+relayB	VAR byte
+
+
+'---------- Misc. ------------------------------------------------------------
+
+PB_mode	VAR byte
+'packet_num	VAR byte
+'delta_t	VAR byte
+
+pivot_angle   VAR byte 
+pivot_state	  VAR nib  'pivot position 0-4
+prev_red_back VAR bit  'previous state of red_back button (for debounce)
+
+'Buttons that are emulated with analog inputs
+bt_popper          VAR bit   'Run the popper (p3_aux > 200)
+'bt_whatever       VAR bit   '(p3_aux < 100)
+bt_pivot_accum     VAR bit   'Move to accumulate position (p3_wheel > 200) 
+bt_pivot_limbo     VAR bit   'Move to limbo position (p3_wheel < 100) 
+
+first_loop		 VAR bit   '1 the first time around, 0 always after. 
+
+'Low prio debug code...
+'timeslice  VAR byte     ' used for executing some services less frequently than every loop
+'tmeslice=1             'WS: initialize time slicing
+'if DEBUG_ENABLE = 0 then end_timeslice  'disable the slow section
+'timeslice = timeslice + 1
+'if timeslice < SLOW_SLICE then end_timeslice:
+' ----------------------------------------------------------------------
+' things to be executed at a lower frequently than every loop go in here:
+' Like performance-killing debug prints, persistant switches (vs momentary
+' switches), relays that don't need a instant response, writes to eeprom...
+'
+' [put debug prints in here...]
+'-----------------------------------------------------------------------
+'timeslice=1   'reset slice counter
+'end_timeslice:
+
+'-----------------------------------------------------------------------
+' The ball knocker will have a limit switch and motor.  The motor should
+' be run in one direction until the limit switch is depressed.  Then the
+' motor should be stopped.  When the knocker button is pressed the motor
+' should be run in the opposite direction until the limit switch is
+' again depressed.  Currently we will assume that the user will hold the
+' button down until the popper launches (releases the limit switch).
+'-----------------------------------------------------------------------
+POPPER_FWD CON 0  'Keep track of which dir to run the popper next
+POPPER_REV CON 1
+
+piv_down	CON	0 'min value must be 0...need for switch and wrap around
+piv_load	CON	1
+piv_score	CON	2
+piv_hang	CON	3 'what angle??
+piv_free	CON	4 'none (keep this the 'higest' value, so we can modulo below it)
+PIV_MAX     CON   piv_free-1   'Must be the highest REAL position...used for wrap around
+
+'sdt Note:
+'       Angle values decrease as pivot is moved to horozontal (down)
+'       Angle values increase as pivot is moved to vertical (up)
+'       Full Up (start)  = 180
+'       Full Down (safe for testing...not real) = 130
+
+'PRACT_ROBOT_DIFF CON -26    'sdt Adjustment for practice robot
+PRACT_ROBOT_DIFF CON 0
+
+'sdt To calibrate a new pot move the pivot to full down and modify offset
+PIV_ANG_FULL_DOWN CON   95  + PRACT_ROBOT_DIFF
+piv_ang_down	CON	96  + PRACT_ROBOT_DIFF          ' limbo for testing now
+piv_ang_load	CON	123 + PRACT_ROBOT_DIFF          ' load/accum
+piv_ang_score	CON	161 + PRACT_ROBOT_DIFF          ' human player
+piv_ang_hang	CON	170 + PRACT_ROBOT_DIFF          ' score (fix name change!!!)
+PIV_ANG_FULL_UP   CON   183 + PRACT_ROBOT_DIFF
+
+'kmkmk
+
+'========== DEFINE ALIASES ===================================================
+'=============================================================================
+'  Aliases are variables which are sub-divisions of variables defined
+'  above.  Aliases don't require any additional RAM.
+
+
+'---------- Aliases for each OI switch input ---------------------------------
+'  Below are aliases for the digital inputs located on the Operator Interface.
+'  Ports 1 & 3 have their inputs duplicated in ports 4 & 2 respectively.  The 
+'  inputs from ports 1 & 3 may be disabled via the 'Disable' dip switch 
+'  located on the Operator Interface.  See Users Manual for details.
+
+p1_sw_trig	VAR oi_swA.bit0	'Joystick Trigger Button,	same as Port4 pin5 
+p1_sw_top	VAR oi_swA.bit1	'Joystick Top Button,		same as Port4 pin8
+p1_sw_aux1	VAR oi_swA.bit2	'Aux input,				same as Port4 pin9
+p1_sw_aux2	VAR oi_swA.bit3	'Aux input,				same as Port4 pin15
+
+p3_sw_trig	VAR oi_swA.bit4	'Joystick Trigger Button,	same as Port2 pin5 
+p3_sw_top	VAR oi_swA.bit5	'Joystick Top Button,		same as Port2 pin8
+p3_sw_aux1	VAR oi_swA.bit6	'Aux input,				same as Port2 pin9
+p3_sw_aux2	VAR oi_swA.bit7	'Aux input,				same as Port2 pin15
+
+p2_sw_trig	VAR oi_swB.bit0	'Joystick Trigger Button
+p2_sw_top	VAR oi_swB.bit1	'Joystick Top Button
+p2_sw_aux1	VAR oi_swB.bit2	'Aux input
+p2_sw_aux2	VAR oi_swB.bit3	'Aux input
+
+p4_sw_trig	VAR oi_swB.bit4	'Joystick Trigger Button
+p4_sw_top	VAR oi_swB.bit5	'Joystick Top Button
+p4_sw_aux1	VAR oi_swB.bit6	'Aux input
+p4_sw_aux2	VAR oi_swB.bit7	'Aux input
+
+
+'---------- Aliases for each RC switch input ---------------------------------
+'  Below are aliases for the digital inputs located on the Robot Controller.
+
+rc_sw1	VAR rc_swA.bit0
+rc_sw2	VAR rc_swA.bit1
+rc_sw3	VAR rc_swA.bit2
+rc_sw4	VAR rc_swA.bit3
+rc_sw5	VAR rc_swA.bit4
+rc_sw6	VAR rc_swA.bit5
+rc_sw7	VAR rc_swA.bit6
+rc_sw8	VAR rc_swA.bit7
+rc_sw9	VAR rc_swB.bit0
+rc_sw10	VAR rc_swB.bit1
+rc_sw11	VAR rc_swB.bit2
+rc_sw12	VAR rc_swB.bit3
+rc_sw13	VAR rc_swB.bit4
+rc_sw14	VAR rc_swB.bit5
+rc_sw15	VAR rc_swB.bit6
+rc_sw16	VAR rc_swB.bit7
+
+
+'---------- Aliases for each RC Relay outputs ---------------------------------
+'  Below are aliases for the relay outputs located on the Robot Controller.
+
+relay1_fwd	VAR RelayA.bit0
+relay1_rev	VAR RelayA.bit1
+relay2_fwd	VAR RelayA.bit2
+relay2_rev	VAR RelayA.bit3
+relay3_fwd	VAR RelayA.bit4
+relay3_rev	VAR RelayA.bit5
+relay4_fwd	VAR RelayA.bit6
+relay4_rev	VAR RelayA.bit7
+
+relay5_fwd	VAR RelayB.bit0
+relay5_rev	VAR RelayB.bit1
+relay6_fwd	VAR RelayB.bit2
+relay6_rev	VAR RelayB.bit3
+relay7_fwd	VAR RelayB.bit4
+relay7_rev	VAR RelayB.bit5
+relay8_fwd	VAR RelayB.bit6
+relay8_rev	VAR RelayB.bit7
+
+
+'---------- Aliases for the Pbasic Mode Byte (PB_mode) -----------------------
+'  The last bit of the PB_mode byte (aliased as comp_mode) indicates the status
+'  of the Competition Control, either Enabled or Disabled.  This indicates the
+'  starting and stopping of rounds at the competitions.  Comp_mode is the same
+'  as the "Disabled" LED on the Operator Interface.
+'  Comp_mode = 1 for Enabled, 0 for Disabled.
+
+comp_mode		VAR PB_mode.bit7
+
+
+'========= WildStang 2000 Aliases (proto button box) ====================
+
+'Rename button box buttons to user friendly names
+bt_debug_on VAR p2_sw_trig              'Button to print debug information 
+bt_limits_disabled VAR p2_sw_trig       'Button to disable all software limits...if one breaks
+
+bt_drive_turbo VAR p2_sw_top            'Button to give full power to drive system
+
+'Feedback LEDs on 'old' button box 
+led_green	VAR Out14
+led_yellow	VAR Out12
+led_red	VAR Out15
+
+'feedback LEDs for the pivot position, just re-map these so they're "in order"
+led_1	VAR Out12
+led_2	VAR Out13
+led_3	VAR Out14
+led_4	VAR Out15
+
+
+'Relay/PWM Color OUTPUTS (these are relatively stable) 
+
+'Popper limit switch
+sw_popper VAR rc_sw1
+
+'Pivot limit switch
+sw_pivot_bottom VAR rc_sw4
+
+'Extender limit switches
+sw_extender_top VAR rc_sw6
+sw_extender_bottom VAR rc_sw5
+
+'Cage Pivot Pots
+
+pivot_pot_right VAR sensor1
+'pivot_pot_left VAR sensor6
+
+
+'RELAYs
+'1 red
+'2 orange
+'3 black
+'4 white
+
+relay_red_fwd VAR relay1_fwd
+relay_red_rev VAR relay1_rev
+
+relay_orange_fwd VAR relay2_fwd
+relay_orange_rev VAR relay2_rev
+
+relay_black_fwd VAR relay3_fwd
+relay_black_rev VAR relay3_rev
+relay_cop_light VAR relay_black_fwd
+
+relay_white_fwd VAR relay4_fwd
+relay_white_rev VAR relay4_rev
+
+
+'PWMs
+'1  <broken>
+'2  red
+'3  purple
+'4  brown
+'5  orange
+'6  yellow
+'7  grey
+'8  green
+'9  blue
+'10 white
+
+'pwm_red VAR PWM2
+
+'note: writing pwm var overwrites p_ var
+pwm_red    VAR pwm2
+pwm_purple VAR pwm3
+pwm_brown  VAR p4_y
+pwm_orange VAR p1_x
+pwm_yellow VAR pwm6
+
+pwm_grey   VAR p3_x
+pwm_green  VAR p4_x
+pwm_blue   VAR p1_wheel
+'pwm_white  VAR p2_wheel
+
+left_wheel VAR pwm_red
+right_wheel VAR pwm_purple
+
+
+'Color INPUTS (prototype box, these will change) 
+
+green_up VAR p4_sw_aux1   'Top Conv Up  (98 = p1_sw_trig)
+green_down VAR p4_sw_aux2  'Top Conv Down (98 = p1_sw_top)  
+
+'(white button unused)
+
+red_up   VAR p4_sw_trig   'Bottom Conveyor (98 = p1_sw_aux1)
+red_down VAR p4_sw_top   'Bottom Conveyor(98 = p1_sw_aux2)
+
+'driver_pot VAR p3_aux
+
+'(note: white button is not connected)
+
+blue_left_up   VAR p1_sw_aux1  'Extend Up(98 = p4_sw_trig)
+blue_left_down VAR p1_sw_aux2   'Extend Down(98 = p4_sw_top)
+
+blue_right_up   VAR p3_sw_aux1  'Hood Up(98 = p4_sw_aux1)
+blue_right_down VAR p3_sw_aux2  'Hood Down(98 = p4_sw_aux2)
+
+black_left  VAR p1_sw_top    'Accumulate Out(98 = p3_sw_trig)
+black_right VAR p1_sw_trig   'Accumulate In(98 = p3_sw_top)
+
+red_back_up   VAR p3_sw_trig  'Auto pivot(98 = p3_sw_aux2)
+red_back_down VAR p3_sw_top  'Auto pivot(98 = p3_sw_aux1)
+
+'========= DEFINE CONSTANTS FOR INITIALIZATION ===============================
+'=============================================================================
+'  The initialization code is used to select the input data used by PBASIC.
+'  The Master micro-processor (uP) sends the data you select to the BS2SX
+'  PBASIC uP.  You may select up to 26 constants, corresponding
+'  to 26 variables, from the 32 available to you.  Make sure that you have 
+'  variables for all the bytes recieved in the serin command.
+'
+'  The constants below have a "c_" prefix, as compared to the variables that 
+'  they will represent.
+'
+'  Set the Constants below to 1 for each data byte you want to recieve.
+'  Set the Constants below to 0 for the unneeded data bytes.
+
+
+'---------- Set the Initialization constants you want to read ----------------
+
+c_p1_y		CON	1
+c_p2_y		CON	1
+c_p3_y		CON	1
+c_p4_y		CON	1
+
+c_p1_x		CON	1
+c_p2_x		CON	1
+c_p3_x		CON	1
+c_p4_x		CON	1
+
+c_p1_wheel		CON	1
+c_p2_wheel		CON	0
+c_p3_wheel		CON	1
+c_p4_wheel		CON	0
+
+c_p1_aux		CON	0
+c_p2_aux		CON	0
+c_p3_aux		CON	1     'Used to emulate digital inputs
+c_p4_aux		CON	0
+
+c_oi_swA		CON	1
+c_oi_swB		CON	1
+
+c_sensor1		CON	1
+c_sensor2		CON	0
+c_sensor3		CON	0
+c_sensor4		CON	0
+c_sensor5		CON	0
+c_sensor6		CON	0
+c_sensor7		CON	0
+c_batt_volt		CON	0
+
+c_rc_swA		CON	1
+c_rc_swB		CON	1
+
+c_delta_t		CON	0
+c_PB_mode		CON	1
+c_packet_num	CON	0
+c_res01		CON	0
+
+
+'---------- Initialization Constant VOLTAGE - USER DEFINED -------------------
+'  This is the 'Low Battery' detect voltage.  The 'Low Battery' LED will
+'  blink when the voltage drops below this value.
+'  Basically set VOLTAGE = INT ((DESIRED FLASH VOLTAGE + 0.4) * 16.3)
+'  Example, for a 10 Volt trigger, set Voltage eq 170.
+
+dataInitVolt	CON 153	'9.0 Volts
+
+
+
+
+'========== DEFINE CONSTANTS (DO NOT CHANGE) =================================
+'=============================================================================
+' Baud rate for communications with User CPU
+OUTBAUD	CON	20	' (62500, 8N1, Noninverted)
+INBAUD	CON	20	' (62500, 8N1, Noninverted)
+
+USERCPU	CON 4
+FPIN		CON 1
+COMA		CON 1
+COMB		CON 2
+COMC		CON 3
+
+
+
+
+'========== MAIN PROGRAM =====================================================
+'=============================================================================
+
+'---------- Input & Output Declarations --------------------------------------
+
+Output	COMB
+Input		COMA
+Input		COMC
+
+Output	7	'define Basic Run LED on RC => out7
+
+Output      8	'define Robot Feedback LED => out8	=> PWM1 Green
+Output      9	'define Robot Feedback LED => out9	=> PWM1 Red
+Output      10	'define Robot Feedback LED => out10	=> PWM2 Green
+Output      11	'define Robot Feedback LED => out11 => PWM2 Red
+Output      12	'define Robot Feedback LED => out12 => Relay1 Red
+Output      13	'define Robot Feedback LED => out13 => Relay1 Green
+Output      14	'define Robot Feedback LED => out14 => Relay2 Red
+Output      15	'define Robot Feedback LED => out15 => Relay2 Green
+
+
+'---------- Initialize Inputs & Outputs --------------------------------------
+
+Out7  = 1		'Basic Run LED on RC
+Out8  = 0		'PWM1 LED - Green
+Out9  = 0		'PWM1 LED - Red
+Out10 = 0		'PWM2 LED - Green
+Out11 = 0		'PWM2 LED - Red
+Out12 = 0		'Relay1 LED - Red
+Out13 = 0		'Relay1 LED - Green
+Out14 = 0		'Relay2 LED - Red
+Out15 = 0		'Relay2 LED - Green
+
+p1_x = 127		'Port 1, X-axis on Joystick
+p2_x = 127		'Port 2, X-axis on Joystick
+pwm6 = 127		'
+p3_x = 127		'Port 3, X-axis on Joystick
+p4_x = 127		'Port 4, X-axis on Joystick
+
+p1_y = 127		'Port 1, Y-axis on Joystick
+p2_y = 127		'Port 2, Y-axis on Joystick
+pwm2 = 127
+pwm3 = 127
+p3_y = 127		'Port 3, Y-axis on Joystick
+p4_y = 127		'Port 4, Y-axis on Joystick
+
+p1_wheel = 127	'Port 1, Wheel on Joystick
+'p2_wheel = 127	'Port 2, Wheel on Joystick
+p3_wheel = 127	'Port 3, Wheel on Joystick
+'p4_wheel = 127	'Port 4, Wheel on Joystick
+
+'p1_aux = 127	'Port 1, Aux Analog
+'p2_aux = 127	'Port 2, Aux Analog
+p3_aux = 127	'Port 3, Aux Analog
+'p4_aux = 127	'Port 4, Aux Analog
+
+first_loop = 1    '1 first time through main loop.. 0 ever after.
+
+pivot_state	  = piv_free
+prev_red_back = 0 'neither direction depressed
+
+relay_cop_light = 1  'always on when the control system allows output. 
+
+
+'========== PBASIC - MASTER uP INITIALIZATION ROUTINE ========================
+'=============================================================================
+'  DO NOT CHANGE THIS!  DO NOT MOVE THIS!
+'  The init routine sends 5 bytes to the Master uP, defining which data bytes to receive.
+'  1)  Collect init.
+'  2)  Lower the COMA line, which is the clk line for the shift out command.
+'  3)  Lower COMB line to tell pic that we are ready to send init data.
+'  4)  Wait for pic to lower the COMC line, signaling pic is ready for data.
+'  5)  Now send out init dat to pic, all 5 bytes.
+'  6)  Now set direction and levels for the COMA and COMB pins.
+
+tempA		CON	c_p3_x <<1 + c_p4_x <<1 + c_p1_x <<1 + c_p2_x <<1 + c_rc_swB
+dataInitA	CON	tempA <<1 + c_rc_swA <<1 + c_oi_swB <<1 + c_oi_swA
+tempB		CON	c_sensor4 <<1 + c_sensor3 <<1 + c_p1_y <<1 + c_p2_y <<1 + c_sensor2
+dataInitB	CON	tempB <<1 + c_sensor1 <<1 + c_packet_num <<1 + c_PB_mode
+tempC		CON	c_batt_volt <<1 + c_sensor7 <<1 + c_p1_wheel <<1 + c_p2_wheel <<1 + c_sensor6
+dataInitC	CON	tempC <<1 + c_sensor5 <<1 + c_p3_y <<1 + c_p4_y
+tempD		CON	c_res01 <<1 + c_delta_t <<1 + c_p3_aux <<1 + c_p4_aux <<1 + c_p1_aux
+dataInitD	CON	tempD <<1 + c_p2_aux  <<1 + c_p3_wheel <<1 + c_p4_wheel
+
+Output	COMA
+low		COMA
+low		COMB
+Wait_init:	if IN3 = 1 then Wait_init:
+Shiftout	COMB,COMA,1, [dataInitA,dataInitB,dataInitC,dataInitD,dataInitVolt]
+Input		COMA
+high		COMB
+
+
+
+if DEBUG_ENABLE = 0 then end_cls
+debug CLS
+end_cls
+
+
+'========== MAIN LOOP ========================================================
+'=============================================================================
+
+MainLoop:
+
+'---------- Serin Command - Get Data from Master uP --------------------------
+'  Construct the "serin" command using the following rules:
+'  1) There must be one variable for every input defined in the "Define Constants for Init" section.
+'  2) The order must match the order in the EXAMPLE SERIN COMMAND below.
+'  3) The total number of all variables may not exceed 26.
+'  4) Only use one "Serin" command.
+'  5) The Serin command must occupy one line.
+'
+'  If you see a BASIC INIT ERR on the Robot Controller after programming and pressing RESET, then
+'  there is a problem with the Serin command below.  Check the number of variables.  A BASIC INIT ERR
+'  will not occur if you have the variables in the wrong order, however your code will not work correctly.
+'
+'  EXAMPLE SERIN COMMAND
+'  This example exceed the 26 variable limit and is not on one line:
+'
+'  Serin COMA\COMB, INBAUD, [oi_swA,oi_swB,rc_swA,rc_swB,p2_x,p1_x,p4_x,p3_x,PB_mode,packet_num,sensor1,
+'				     sensor2,p2_y,p1_y,sensor3,sensor4,p4_y,p3_y,sensor5,sensor6,p2_wheel,p1_wheel,
+'				     sensor7,sensor8,p4_wheel,p3_wheel,p2_aux,p1_aux,p4_aux,p3_aux,delta_t,res01]
+'
+   Serin COMA\COMB, INBAUD, [oi_swA,oi_swB,rc_swA,rc_swB,p2_x,p1_x,p4_x,p3_x,PB_mode,sensor1,p2_y,p1_y,p4_y,p3_y,p1_wheel,p3_wheel,p3_aux]
+
+
+if DEBUG_ENABLE = 0 then dont_print_inputs
+'debug ? oi_swA
+'debug ? oi_swB
+'debug ? rc_swA
+'debug ? rc_swB
+'debug ? p2_x
+'debug ? p1_x
+'debug ? p4_x
+'debug ? p3_x
+'debug ? PB_mode
+'debug ? sensor1
+'debug ? p2_y
+'debug ? p1_y
+'debug ? p4_y
+'debug ? p3_y
+'debug ? p1_wheel
+debug ? p3_wheel
+'debug ? p3_aux
+dont_print_inputs:
+
+'-forget it.. we'll just ignore analogs=0 instead.
+'This is intentionally placed after the first packet is received, so
+'we know the xmit power is on before doing our delay.  Note, this
+'will cause the wdog to expire, but it will then recover. 
+'if first_loop = 0 then proceed
+'else
+'  first_loop = 0  ' 1 first time through main loop.. 0 ever after.
+'debug "Begin", CR
+'  pause 500       ' pause 1/2 second to let analog inputs stabilize 
+'  goto MainLoop   ' discard first packet. 
+'proceed:
+
+
+' example of how to write to console with serout. 'debug' is normally
+' more convenient.  if we want to save this to a file, we must disconnect
+' disconnect ATN pin (stamp manual p.308, fig 1-17.)
+'Serout 16, 16468, ["text from serout",13] '9600 baud inverted, 13=CR
+'Serin  16, 16780, [wait("ok")] '2400 baud, wait for "ok_" entry
+
+'Console control command to go to upper left of screen [2,x=0,y=0]
+'and clear to the right [11].
+'Serout 16,84+$4000,[2,0,0,11,"clear:"]
+'(make CONs for magic numbers...)
+
+'debug CR  'carriage return
+'debug CLS 'clear the debug screen 
+'debug ibin ? prev_sw  'print binary value [cf ibin2] 
+'debug dec p1_x, dec p1_y
+'debug "right pwm=", dec tmp255, CR  'kmk debug example with text. 
+
+
+'---------- Blink BASIC RUN LED ----------------------------------------------
+Toggle 7			'Basic Run LED on the RC is toggled ON/OFF every loop.
+
+
+
+
+'========== PERFORM OPERATIONS ===============================================
+'  Add your custom code here.
+'  Delete any of the following sections below (except for Output Data) as desired.
+
+
+'---------- Buttons to Relays ------------------------------------------------
+
+'<removed>
+
+
+'---------- Analogs to Buttons -----------------------------------------------
+' Analog inputs can be used as digital inputs by wiring them up as follows:
+'   5V----------------------
+'                            Switch ------- Analog Input
+'   100K resistor to 5V ----
+'
+'   So the following has the analog input floating when the switch is not pressed.
+'   Floating converts to 127.  Pulling it to 5V converts to 255.  Pulling it to
+'   the 100K resistor (with one end at 5V) converts to ~33
+'
+'   Setup the threshold points
+ANALOG_TO_BUTTON_HIGH CON 200   'Any value above this is considered HIGH
+ANALOG_TO_BUTTON_LOW  CON 100   'Any value below this is considered LOW
+
+'----------- p3_aux -> popper(255) and ????? ...127=none
+bt_popper=0    'Initialize the values to zero
+'bt_whatever=0
+
+'kmk
+'this line is because the controller is reading about fifty 0's (right
+'from serin) after reset before it sees a correct value.  we don't know
+'the root cause of this problem yet. 
+if p3_aux = 0 then done_p3_aux_convert:
+
+if p3_aux<ANALOG_TO_BUTTON_HIGH and p3_aux>ANALOG_TO_BUTTON_LOW then done_p3_aux_convert
+'else one of the buttons is pressed
+
+if p3_aux>ANALOG_TO_BUTTON_HIGH then p3_aux_convert_high
+'else it must be low
+  '??????? Set other button value to one HERE ???????
+goto done_p3_aux_convert
+
+p3_aux_convert_high:   'p3_aux high = bt_popper
+bt_popper=1
+
+done_p3_aux_convert:
+
+'---------- p3_wheel -> pivot_auto_accum(255) and pivot_auto_limbo...127=none
+'p3_wheel is wired up to the pivot_auto_accum(33)...127=none
+bt_pivot_accum=0  'Initialize both to zero
+bt_pivot_limbo=0
+
+'workaround init serin problem
+if p3_wheel = 0 then done_p3_wheel_convert:
+
+if p3_wheel<ANALOG_TO_BUTTON_HIGH and p3_wheel>ANALOG_TO_BUTTON_LOW then done_p3_wheel_convert
+'else one of the buttons is pressed
+
+if p3_wheel>ANALOG_TO_BUTTON_HIGH then p3_wheel_convert_high
+'else it must be low
+bt_pivot_limbo=1  'p3_wheel low = bt_pivot_limbo
+
+goto done_p3_wheel_convert
+
+p3_wheel_convert_high:   'p3_wheel high = bt_pivot_accum
+bt_pivot_accum=1
+
+done_p3_wheel_convert:
+
+'---------- Feedback LEDs for Relay1, Relay2 ---------------------------------
+
+'Out13 = relay1_fwd		'LED is ON when Relay 1 is Forward
+'Out12 = relay1_rev		'LED is ON when Relay 1 is Reverse
+'Out15 = relay2_fwd		'LED is ON when Relay 2 is Forward
+'Out14 = relay2_rev		'LED is ON when Relay 2 is Reverse
+
+
+'---------- PWM outputs Limited by Limit Switches  ---------------------------
+
+'<removed>
+
+
+'---------- Debug output... -------------
+
+'proto base test OUTPUT
+
+'debug ? relay_red_fwd 
+'debug ? relay_red_rev 
+
+'debug ? relay_orange_fwd 
+'debug ? relay_orange_rev 
+
+'debug ? relay_black_fwd 
+'debug ? relay_black_rev 
+
+'debug ? relay_white_fwd 
+'debug ? relay_white_rev 
+
+
+'debug ? pwm_red 
+'debug ? pwm_purple 
+'debug ? pwm_brown 
+'debug ? pwm_orange 
+'debug ? pwm_yellow 
+'debug ? pwm_grey 
+'debug ? pwm_green 
+'debug ? pwm_blue 
+
+
+'INPUTS (prototype box, these will change) 
+
+'debug ? green_up 
+'debug ? green_down 
+
+'(white button unused)
+
+'debug ? red_up 
+'debug ? red_down 
+'debug ? driver_pot 
+
+'debug ? blue_left_up 
+'debug ? blue_left_down 
+
+'debug ? blue_right_up 
+'debug ? blue_right_down 
+
+'debug ? black_left 
+'debug ? black_right 
+
+'debug ? red_back_up 
+'debug ? red_back_down 
+
+
+'create a bit of a DEAD ZONE on the X axis.. easier to drive straight. 
+if p2_x > 132 or p2_x < 122 then outofzone
+'else
+ p2_x = 127 'stick the input back to center
+outofzone:
+
+stick_mode:
+   '== SINGLE STICK MODE ==
+'   left_speed  = (((((2000 + right_y - right_x + 127) Min 2000 Max 2254) - 2000)) MAX 254)
+'   right_speed = (((((2000 + right_y + right_x - 127) Min 2000 Max 2254) - 2000)) MAX 254)
+'if in single stick mode, set motor speeds according to the combined x/y equations.
+'manual p.31 (the 2000s are to avoid negative numbers)
+   right_wheel = (((((2000 + p2_y - p2_x + 127) Min 2000 Max 2254) - 2000)) MAX 254)
+   left_wheel  = (((((2000 + p2_y + p2_x - 127) Min 2000 Max 2254) - 2000)) MAX 254)
+
+if bt_drive_turbo = 1 then turbo1
+'else, scale speeds down
+   right_wheel = ((right_wheel * DRIVE_SCL/100) + DRIVE_CON MAX 254)
+   left_wheel  = ((left_wheel  * DRIVE_SCL/100) + DRIVE_CON MAX 254)
+turbo1:
+
+
+
+
+'---------- Feedback LEDs for Left & Right wheel PWMs (2&3) ----------------------------
+Out8  =   left_wheel/216		'LED is ON when Victor883 full forward (default CAL)
+Out9  = ~(left_wheel/56  max 1)	'LED is ON when Victor883 full reverse (default CAL)
+Out10 =   right_wheel/216		'LED is ON when Victor883 full forward (default CAL)
+Out11 = ~(right_wheel/56  max 1)	'LED is ON when Victor883 full reverse (default CAL)
+
+
+
+drive_done:
+
+'debug dec p2_y, " "
+'debug dec p1_y, CR
+
+
+'--Big Conveyer
+pwm_blue  = 127 + (red_up * 127) - (red_down * 127)
+
+'--Little Conveyer
+pwm_orange  = 127 + (green_up * 127) - (green_down * 127)
+
+
+'--Extender-------------------------------------------------------
+'debug ? sw_extender_top
+'debug ? sw_extender_bottom
+
+pwm_grey=127
+
+' if up   & top closed,  then go up
+' if down & bottom open, then go down
+if (blue_left_up   &  sw_extender_top) or (blue_left_up & bt_limits_disabled )    then extender_up
+if (blue_left_down &~ sw_extender_bottom) or (blue_left_down & bt_limits_disabled ) then ext_down
+goto ext_done
+
+extender_up:
+pwm_grey=254  'NOTE: for some reason, 255 isn't working! 
+goto ext_done:
+
+ext_down:
+pwm_grey=0
+goto ext_done:
+
+ext_done:
+
+'***************************** Begin pivot section ****************************
+'sdt Constants for pivot stuff
+
+'Dead zone in middle of stick where this much movement in either direction will
+'  will not cause the pivot to go into manual override mode
+PIVOT_OVERRIDE_DEAD_ZONE con 10  
+
+'Dead zone around pot target position to avoid oscillation around the target
+PIVOT_DEAD_ZONE_SIZE con 3
+
+'When bt_pivot_accum=1 then move to accumulate position
+
+'Speed to run the pivot when rotating to a new position...should be dynamic 
+'  depending on distance from target...if we have time
+PIVOT_UP_SPEED con 225
+PIVOT_DOWN_SPEED con 40
+
+'--Pivot (manual control) 
+'  If I understand the plan right... the box operator controls the discrete
+'  positions with pushbuttons, and the driver *also* has pivot control with
+'  a joystick.  The arbitration between these, is that if the joystick is
+'  moved, the automatic control will just release control. 
+'(if any scaling is added etc, this needs to be re-written...)
+
+'Removed due to Dan Green Concerns
+'p3_sw_trig = p3_sw_trig | p2_sw_trig   'Overlap the pivot trig with button box
+'p3_sw_top = p3_sw_top | p2_sw_top      'Overlap the pivot top with button box
+
+'sdt Use the stick values if in piv_free (no position) or stick has been moved
+'if we are in piv_free just use the stick values
+if pivot_state = piv_free then yellow_manual
+
+'else check to see if we should drop into free mode due to stick movement
+if p1_y <= (127+PIVOT_OVERRIDE_DEAD_ZONE) and (p1_y >= (127-PIVOT_OVERRIDE_DEAD_ZONE)) then no_override  'if the stick hasn't been touched
+'else  (we have just moved into override )
+   'debug "OVERRIDE! "
+   'debug dec p1_y
+   'debug CR
+   pivot_state = piv_free  'manual control: Override discrete mode seeking. 
+
+yellow_manual:
+   pwm_yellow = 127  'default stop
+   'pwm should be set to joystick value for override or free situations
+   if p1_y > 127 then reverse_pivot_down
+  'else reverse the pivot joystick to be above 127
+   if (pivot_pot_right >= PIV_ANG_FULL_UP) and (bt_limits_disabled = 0) then reverse_done
+   pwm_yellow = 127 + (127-p1_y)         'Reverse joystick values
+   goto reverse_done 
+
+'kmk
+   reverse_pivot_down:
+   if (pivot_pot_right <= piv_ang_down) and (bt_limits_disabled = 0) then reverse_done
+   pwm_yellow = 127 - (p1_y-127)         'Reverse joystick values
+
+   reverse_done:
+
+no_override:
+
+'--Accumulator
+relay_white_fwd = black_right | red_up   'When running bottom conv in...accumulate
+relay_white_rev = black_left 
+
+'--Hood
+relay_orange_fwd = blue_right_up 
+relay_orange_rev = blue_right_down
+
+
+
+'--- Anchor --- drop it only if both button and trigger are pressed. 
+' NOTE: re-uses popper pwm, can't be used at the same time. 
+' NOTE: SET switch permanently closed (for anchor use only) 
+sw_popper=1
+if (bt_debug_on=0) then no_anchor  'jump below the popper code. 
+
+
+'--Popper
+'  sw_popper  bt_popper      action
+'     0            X         Pull it in  (popper is out)          
+'     1            0         Nothing (popper is armed)
+'     1            1         Release it (popper is being fired)
+POPPER_IN_SPEED CON 1     'Don't put at 0 until sdt problem fixed
+POPPER_OUT_SPEED CON 254  'Don't put at 255 until sdt problem fixed
+
+'The order should be changed so "Nothing" is the first case..for efficiency
+if (sw_popper=0) then run_popper_in                        'Popper is out
+if (sw_popper=1) and (bt_popper=1) then run_popper_out 'Popper is being fired
+'else don't run the popper
+ 
+'----------Don't run the popper---------
+dont_run_popper:
+pwm_green=127
+goto popper_done   'Don't run the popper
+
+'----------Run the popper so it releases-------
+run_popper_out:
+pwm_green=POPPER_IN_SPEED   'Release the popper
+goto popper_done
+
+'----------Run the popper so it pulls it in -------
+run_popper_in:
+pwm_green=POPPER_OUT_SPEED    'Reel the popper in
+
+popper_done:
+
+no_anchor:
+
+
+
+'Feedback LEDs on button box 
+led_1 = 0
+led_2 = 0
+led_3 = 0
+led_4 = 0
+
+led_down  VAR led_1
+led_load  VAR led_2
+led_score VAR led_3
+led_hang  VAR led_4
+
+'---set the pivot seek target state based on 4 buttons:
+
+'
+'      seek up -> score
+'      seek down -> hang
+'      accum -> accum
+'      unusued accum -> limbo
+'piv_down	CON	0 'min value must be 0...need for switch and wrap around
+'piv_load	CON	1
+'piv_score	CON	2
+'piv_hang	CON	3
+'piv_free	CON	4 'none (keep this the 'higest' value, so we can modulo below it)
+
+if bt_pivot_limbo then  set_piv_down
+if bt_pivot_accum then  set_piv_load
+if red_back_down  then  set_piv_score
+if red_back_up    then  set_piv_hang
+'else, leave it in whatever state it's working in...
+goto set_piv_done:
+
+set_piv_down:
+pivot_state = piv_down
+led_1 = 1
+pivot_angle = piv_ang_down
+goto set_piv_done
+
+set_piv_load:
+pivot_state = piv_load
+led_2 = 1
+pivot_angle = piv_ang_load
+goto set_piv_done
+
+set_piv_score:
+pivot_state = piv_score
+led_3 = 1
+pivot_angle = piv_ang_score
+goto set_piv_done
+
+set_piv_hang:
+pivot_state = piv_hang
+led_4 = 1
+pivot_angle = piv_ang_hang
+goto set_piv_done
+
+set_piv_done:
+
+
+
+'  If there's any kind of manual pivot control, the 'seek' is
+'  overridden/disabled by setting the state to 'free'
+if pivot_state = piv_free  then pivot_move_done  ' jump over all seek stuff. 
+
+
+'--- NOW rotate PIVOT to the target angle. 
+'(maybe use the limit switch here too?)
+
+pwm_yellow = 127  'default stop, unless otherwise set. 
+
+'the 'PIVOT_DEAD_ZONE_SIZE' stuff is to give it a little slack so it doesn't oscillate for now...
+'??? what happens when the balls change the mass or the extender changes
+' the moment arm??? the damping may be totally off! also it depends on angle. 
+if pivot_pot_right < pivot_angle-PIVOT_DEAD_ZONE_SIZE  then pivot_up
+if pivot_pot_right > pivot_angle+PIVOT_DEAD_ZONE_SIZE  then pivot_down
+'else
+   pwm_yellow = 127  'stop
+  'we're here.. quit seek mode or (else it forces a correction when bumped). 
+   pivot_state = piv_free
+goto pivot_move_done
+
+pivot_up:
+'if pivot_pot_right >= PIV_ANG_FULL_UP then pivot_move_done
+'the above limit is really only needed in the override section. 
+pwm_yellow = PIVOT_UP_SPEED
+goto pivot_move_done
+
+pivot_down:
+pwm_yellow = PIVOT_DOWN_SPEED
+goto pivot_move_done
+
+pivot_move_done:  'we go here if we've reached the target or there's any manual control. 
+
+
+'---Setup LEDs so that they indicate what position we are in.
+' If we are between positions then we should light the two that we are between.
+' Turn on hang and down if between the hang/down and the outter limits
+
+' Initialize all the LEDs to ON and turn them off as needed.
+led_down=1
+led_load=1
+led_score=1
+led_hang=1
+
+'----- Turn off led_down??? -----
+'led_down zone...FULL_DOWN to low edge of LOAD and top edge of hang to FULL_UP
+if (pivot_pot_right >= PIV_ANG_FULL_DOWN) and (pivot_pot_right < (piv_ang_load - PIVOT_DEAD_ZONE_SIZE)) then led_down_done
+if (pivot_pot_right > (piv_ang_hang + PIVOT_DEAD_ZONE_SIZE)) and (pivot_pot_right < PIV_ANG_FULL_UP) then led_down_done
+'else we are not in led_down zone
+led_down=0
+
+led_down_done:
+
+'----- Turn off led_load??? -----
+'led_load zone... high edge of DOWN to low edge of SCORE
+if (pivot_pot_right > (piv_ang_down + PIVOT_DEAD_ZONE_SIZE)) and (pivot_pot_right < (piv_ang_score - PIVOT_DEAD_ZONE_SIZE)) then led_load_done
+'else we are not in led_load zone
+led_load=0
+
+led_load_done:
+
+'----- Turn off led_score??? -----
+'led_score zone... high edge of LOAD to low edge of HANG
+if (pivot_pot_right > (piv_ang_load + PIVOT_DEAD_ZONE_SIZE)) and (pivot_pot_right < (piv_ang_hang - PIVOT_DEAD_ZONE_SIZE)) then led_score_done
+'else we are not in led_score zone
+led_score=0
+
+led_score_done:
+
+'----- Turn off led_hang??? -----
+'led_hang zone... high edge of SCORE to FULL_UP and low edge of down to FULL_DOWN
+if (pivot_pot_right > (piv_ang_score + PIVOT_DEAD_ZONE_SIZE)) and (pivot_pot_right <= PIV_ANG_FULL_UP) then led_hang_done
+if (pivot_pot_right < (piv_ang_down - PIVOT_DEAD_ZONE_SIZE)) and (pivot_pot_right > PIV_ANG_FULL_DOWN) then led_hang_done
+'else we are not in led_hang zone
+led_hang=0
+
+led_hang_done:
+
+'if DEBUG_ENABLE = 0 then end_kdebug
+if bt_debug_on = 0 then end_kdebug   'If the debug button pressed...display information
+
+'debug CR
+'debug "debug..."
+'Serout 16,84+$4000,["serout...",13]
+'Serout 16,396+$4000,["serout..."]
+
+''Serout 16,16624,[2,0,0,11,"clear:"]
+'Serout 16, 16468, ["text from serout",13] '9600 baud inverted, 13=CR
+'Serin  16, 16780, [wait("ok")] '2400 baud, wait for "ok_" entry
+
+'Console control command to go to upper left of screen [2,x=0,y=0]
+'and clear to the right [11].
+'debug CLS
+'debug ? pivot_angle
+'debug ? right_wheel
+'debug ? left_wheel
+'debug ? p1_x  ' CANT PRINT p1_x here because its been reused
+'debug ? p2_x
+'debug ? p2_y
+'debug ? p1_y
+'debug ? p2_sw_top
+'debug ? p2_sw_trig
+debug " pot="
+debug dec pivot_pot_right
+debug " st="
+debug dec pivot_state
+'debug " yellow="
+'debug dec pwm_yellow
+'debug " rb"
+'debug dec red_back_up
+'debug ","
+'debug dec red_back_down
+'debug " prev="
+'debug dec prev_red_back
+debug " targ="
+debug dec pivot_angle
+debug CR
+'debug ? rc_sw1
+
+end_kdebug
+
+
+'========== OUTPUT DATA ======================================================
+'=============================================================================
+'  The Serout line sends data to the Output uP.  The Output uP passes this to each PWM 1-16
+'  and Relay 1-8.  The Output uP will not output data if there is no communication with the
+'  Operator Interface or if the Competition Mode is Disabled.  Do not delete any elements
+'  from the Serout array.  Set unused PWM outputs to 127.  Set unused relay outputs to 0.
+'
+'  Serout USERCPU, OUTBAUD, [255,255,(PWM1),relayA,(PWM2),relayB,(PWM3),(PWM4),(PWM5),(PWM6),(PWM7),(PWM8),(PWM9),(PWM10),(PWM11),(PWM12),(PWM13),(PWM14),(PWM15),(PWM16)]
+
+'sdt temp for popper testing...Does not work without +1, -1 code!
+pwm_green = pwm_green + 1
+pwm_green = pwm_green - 1
+'debug " "
+'debug dec pwm_green
+'debug CR
+   Serout USERCPU, OUTBAUD, [255,255,p1_y,relayA,pwm2,relayB,pwm3,p4_y,p1_x,pwm6,p3_x,p4_x,p1_wheel,127,127,127,127,127,127,127]
+
+Goto MainLoop:
+
+
+Stop
